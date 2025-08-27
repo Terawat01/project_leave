@@ -1,0 +1,49 @@
+<?php
+// Check if user is logged in and is an Admin (Position_ID 4)
+if (!isset($_SESSION['user_id']) || $_SESSION['position_id'] != 4) {
+    header("Location: ../logout.php");
+    exit();
+}
+$current_page = basename($_SERVER['PHP_SELF']);
+?>
+<div class="d-flex">
+    <div class="d-flex flex-column flex-shrink-0 p-3 bg-white" style="width: 280px; height: 100vh; position:fixed;">
+        <a href="dashboard.php" class="d-flex align-items-center mb-3 mb-md-0 me-md-auto link-dark text-decoration-none">
+            <span class="fs-4">Leave System</span>
+        </a>
+        <div class="text-muted small">ผู้ดูแลระบบ</div>
+        <hr>
+        <ul class="nav nav-pills flex-column mb-auto">
+            <li class="nav-item">
+                <a href="dashboard.php" class="nav-link <?php echo ($current_page == 'dashboard.php') ? 'active' : 'link-dark'; ?>">
+                    <i class="bi bi-speedometer2 me-2"></i>แดชบอร์ด
+                </a>
+            </li>
+            <li>
+                <a href="manage_leave.php" class="nav-link <?php echo ($current_page == 'manage_leave.php') ? 'active' : 'link-dark'; ?>">
+                    <i class="bi bi-calendar-check me-2"></i>จัดการการลา
+                </a>
+            </li>
+            <li>
+                <a href="manage_employees.php" class="nav-link <?php echo ($current_page == 'manage_employees.php') ? 'active' : 'link-dark'; ?>">
+                    <i class="bi bi-people me-2"></i>จัดการพนักงาน
+                </a>
+            </li>
+            <li>
+                <a href="holidays.php" class="nav-link <?php echo ($current_page == 'holidays.php') ? 'active' : 'link-dark'; ?>">
+                    <i class="bi bi-calendar3 me-2"></i>จัดการวันหยุด
+                </a>
+            </li>
+        </ul>
+        <hr>
+        <div class="dropdown">
+            <a href="#" class="d-flex align-items-center link-dark text-decoration-none dropdown-toggle" id="dropdownUser2" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-person-circle fs-4 me-2"></i>
+                <strong><?php echo htmlspecialchars($_SESSION['user_name']); ?> (Admin)</strong>
+            </a>
+            <ul class="dropdown-menu text-small shadow" aria-labelledby="dropdownUser2">
+                <li><a class="dropdown-item" href="../logout.php">ออกจากระบบ</a></li>
+            </ul>
+        </div>
+    </div>
+    <div style="width: 20px;"></div> <div class="container-fluid">
