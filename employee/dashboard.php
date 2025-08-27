@@ -38,32 +38,33 @@ $recent_leaves = $recent_leaves_stmt->get_result();
     <h4 class="mb-4">หน้าหลัก</h4>
     <p class="text-muted">ภาพรวมการลางานของคุณ</p>
 
-    <div class="row">
-        <div class="col-md-3">
-            <div class="card text-center p-3 mb-3">
-                <div class="card-body">
-                    <h5 class="card-title"><?php echo $remaining_leave; ?> วัน</h5>
-                    <p class="card-text">วันลาคงเหลือ</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center p-3 mb-3">
-                <div class="card-body">
-                    <h5 class="card-title"><?php echo $pending_count; ?> รายการ</h5>
-                    <p class="card-text">คำขอรอดำเนินการ</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center p-3 mb-3">
-                <div class="card-body">
-                    <h5 class="card-title"><?php echo $days_taken; ?> วัน</h5>
-                    <p class="card-text">ลาแล้วในปีนี้</p>
-                </div>
+<div class="row justify-content-center">
+    <div class="col-md-3">
+        <div class="card text-center p-3 mb-3 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title"><?php echo $remaining_leave; ?> วัน</h5>
+                <p class="card-text">วันลาคงเหลือ</p>
             </div>
         </div>
     </div>
+    <div class="col-md-3">
+        <div class="card text-center p-3 mb-3 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title"><?php echo $pending_count; ?> รายการ</h5>
+                <p class="card-text">คำขอรอดำเนินการ</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center p-3 mb-3 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title"><?php echo $days_taken; ?> วัน</h5>
+                <p class="card-text">ลาแล้วในปีนี้</p>
+            </div>
+        </div>
+    </div>
+</div>
+
 
     <div class="card mt-4">
         <div class="card-header">
