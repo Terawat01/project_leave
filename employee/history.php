@@ -1,22 +1,21 @@
 <?php
 require_once '../includes/db.php';
+require_once '../includes/header.php';
+require_once '../includes/sidebar_employee.php';
+
 
 // Handle Cancel Action
 if (isset($_GET['action']) && $_GET['action'] == 'cancel' && isset($_GET['id'])) {
     $leave_id_to_cancel = $_GET['id'];
     $current_emp_id = $_SESSION['user_id'];
 
-    // Delete the leave request only if it belongs to the current user and is pending
     $stmt = $conn->prepare("DELETE FROM emp_leave WHERE Leave_ID = ? AND Emp_ID = ? AND Leave_Status_ID = '3'");
     $stmt->bind_param("ss", $leave_id_to_cancel, $current_emp_id);
     $stmt->execute();
     $stmt->close();
-    header("Location: history.php"); // Redirect to refresh the page
+    header("Location: history.php");
     exit();
 }
-
-require_once '../includes/header.php';
-require_once '../includes/sidebar_employee.php';
 
 $emp_id = $_SESSION['user_id'];
 
@@ -35,6 +34,7 @@ $sql = "
         el.Reason,
         el.Request_date,
         el.Approved_date,
+        el.Document_File,
         lt.Leave_Type_Name,
         ls.Leave_Type_Name as status,
         el.Leave_Status_ID
@@ -44,7 +44,6 @@ $sql = "
     WHERE el.Emp_ID = ?
 ";
 
-// Build dynamic WHERE clauses for filtering
 $params = [$emp_id];
 $types = "s";
 
@@ -77,8 +76,8 @@ if ($stmt) {
 // Fetch statuses and types for dropdowns
 $statuses = $conn->query("SELECT * FROM leave_status");
 $leave_types = $conn->query("SELECT * FROM leave_type");
-
 ?>
+
 <div class="main-content p-4">
     <h4 class="mb-1">ประวัติการลา</h4>
     <p class="text-muted">ประวัติการลาทั้งหมดของคุณ</p>
@@ -102,7 +101,7 @@ $leave_types = $conn->query("SELECT * FROM leave_type");
                         <?php endwhile; ?>
                     </select>
                 </div>
-                 <div class="col-md-3">
+                <div class="col-md-3">
                     <label for="type" class="form-label">ประเภทการลา</label>
                     <select name="type" id="type" class="form-select">
                         <option value="">ทุกประเภท</option>
@@ -133,6 +132,7 @@ $leave_types = $conn->query("SELECT * FROM leave_type");
                             <th>วันที่ลา</th>
                             <th>จำนวนวัน</th>
                             <th>เหตุผล</th>
+                            <th>ไฟล์แนบ</th>
                             <th>สถานะ</th>
                             <th>วันที่อนุมัติ</th>
                             <th>วันที่ส่งคำขอ</th>
@@ -147,14 +147,30 @@ $leave_types = $conn->query("SELECT * FROM leave_type");
                                 <td><?php echo date('d/m/Y', strtotime($row['Start_leave_date'])) . " ถึง " . date('d/m/Y', strtotime($row['End_Leave_date'])); ?></td>
                                 <td><?php echo htmlspecialchars($row['total_days']); ?></td>
                                 <td><?php echo htmlspecialchars($row['Reason'] ?: '-'); ?></td>
+                                <td>
+                                    <?php if (!empty($row['Document_File'])): 
+                                        $file_path = "../uploads/" . $row['Document_File'];
+                                        $ext = strtolower(pathinfo($row['Document_File'], PATHINFO_EXTENSION));
+                                    ?>
+                                        <?php if (in_array($ext, ['jpg','jpeg','png'])): ?>
+                                            <a href="#" data-bs-toggle="modal" data-bs-target="#imageModal" data-img="<?php echo $file_path; ?>">
+                                                <img src="<?php echo $file_path; ?>" alt="แนบไฟล์" style="width:50px; height:auto; border:1px solid #ccc; border-radius:5px;">
+                                            </a>
+                                        <?php else: ?>
+                                            <a href="<?php echo $file_path; ?>" target="_blank" class="btn btn-sm btn-info">
+                                                เปิดไฟล์
+                                            </a>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
+                                </td>
                                 <td><?php echo htmlspecialchars($row['status']); ?></td>
                                 <td><?php echo ($row['Approved_date'] != '0000-00-00') ? date('d/m/Y', strtotime($row['Approved_date'])) : '-'; ?></td>
                                 <td><?php echo date('d/m/Y', strtotime($row['Request_date'])); ?></td>
                                 <td>
-                                    <?php if ($row['Leave_Status_ID'] == '3'): // If status is 'Pending' ?>
-                                        <a href="?action=cancel&id=<?php echo $row['Leave_ID']; ?>" class="btn btn-danger btn-sm" onclick="return confirm('คุณต้องการยกเลิกคำขอนี้ใช่หรือไม่?')">
-                                            ยกเลิก
-                                        </a>
+                                    <?php if ($row['Leave_Status_ID'] == '3'): ?>
+                                        <a href="?action=cancel&id=<?php echo $row['Leave_ID']; ?>" class="btn btn-danger btn-sm" onclick="return confirm('คุณต้องการยกเลิกคำขอนี้ใช่หรือไม่?')">ยกเลิก</a>
                                     <?php else: ?>
                                         -
                                     <?php endif; ?>
@@ -163,7 +179,7 @@ $leave_types = $conn->query("SELECT * FROM leave_type");
                             <?php endwhile; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="8" class="text-center text-muted">ไม่มีข้อมูลประวัติการลา</td>
+                                <td colspan="9" class="text-center text-muted">ไม่มีข้อมูลประวัติการลา</td>
                             </tr>
                         <?php endif; ?>
                     </tbody>
@@ -172,6 +188,32 @@ $leave_types = $conn->query("SELECT * FROM leave_type");
         </div>
     </div>
 </div>
+
+<!-- Modal สำหรับดูรูปภาพแนบ -->
+<div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="imageModalLabel">ไฟล์แนบ</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <img src="" id="modalImage" class="img-fluid" alt="ไฟล์แนบ">
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var imageModal = document.getElementById('imageModal');
+imageModal.addEventListener('show.bs.modal', function (event) {
+    var triggerLink = event.relatedTarget;
+    var imgSrc = triggerLink.getAttribute('data-img');
+    var modalImage = document.getElementById('modalImage');
+    modalImage.src = imgSrc;
+});
+</script>
+
 <?php
 require_once '../includes/footer.php';
 if (isset($stmt)) $stmt->close();

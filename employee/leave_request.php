@@ -17,23 +17,38 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $document_filename = '';
 
     // --- File Upload Logic ---
-    if (isset($_FILES['document']) && $_FILES['document']['error'] == 0) {
-        $allowed_types = ['image/jpeg', 'image/png', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        $max_size = 5 * 1024 * 1024; // 5MB
+if (isset($_FILES['document']) && $_FILES['document']['error'] == 0) {
+    $allowed_types = [
+        'image/jpeg', 'image/png',
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    $max_size = 5 * 1024 * 1024; // 5MB
 
-        if (in_array($_FILES['document']['type'], $allowed_types) && $_FILES['document']['size'] <= $max_size) {
-            $upload_dir = '../uploads/';
-            // Create a unique filename to prevent overwriting
-            $file_extension = pathinfo($_FILES['document']['name'], PATHINFO_EXTENSION);
-            $document_filename = uniqid('doc_') . '_' . time() . '.' . $file_extension;
-            
-            if (!move_uploaded_file($_FILES['document']['tmp_name'], $upload_dir . $document_filename)) {
-                $error = "เกิดข้อผิดพลาดในการอัปโหลดไฟล์";
-            }
-        } else {
-            $error = "ไฟล์ไม่ถูกต้องหรือมีขนาดใหญ่เกิน 5MB";
+    if (in_array($_FILES['document']['type'], $allowed_types) && $_FILES['document']['size'] <= $max_size) {
+        $upload_dir = '../uploads/';
+        if (!is_dir($upload_dir)) {
+            mkdir($upload_dir, 0777, true);
         }
+
+        // ฟังก์ชันสร้างชื่อไฟล์สุ่ม 8 ตัวอักษร (A-Z, a-z, 0-9)
+        function randomString($length = 8) {
+            return substr(str_shuffle('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'), 0, $length);
+        }
+
+        $file_extension = pathinfo($_FILES['document']['name'], PATHINFO_EXTENSION);
+        $document_filename = randomString(8) . '.' . $file_extension;
+
+        if (!move_uploaded_file($_FILES['document']['tmp_name'], $upload_dir . $document_filename)) {
+            $error = "เกิดข้อผิดพลาดในการอัปโหลดไฟล์";
+        }
+    } else {
+        $error = "ไฟล์ไม่ถูกต้องหรือมีขนาดใหญ่เกิน 5MB";
     }
+} else {
+    $document_filename = ''; // ถ้าไม่แนบไฟล์
+}
     // -------------------------
 
     if (empty($error)) {
