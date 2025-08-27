@@ -113,7 +113,9 @@ $leave_types = $conn->query("SELECT * FROM leave_type");
                     </select>
                 </div>
                 <div class="col-md-1">
-                    <button type="submit" class="btn btn-primary w-100">ค้นหา</button>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search"></i> ค้นหา
+                    </button>
                 </div>
             </form>
         </div>
