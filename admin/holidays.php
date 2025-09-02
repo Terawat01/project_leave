@@ -1,4 +1,10 @@
 <?php
+session_start();
+if (!isset($_SESSION['user_id']) || $_SESSION['position_id'] != 4) {
+    header("Location: login.php");
+    exit();
+}
+
 require_once '../includes/db.php';
 
 // Handle Add Holiday

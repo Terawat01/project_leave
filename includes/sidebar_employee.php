@@ -36,9 +36,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <i class="bi bi-calendar3 me-2"></i>วันหยุด
                 </a>
             </li>
-            <li>
+            <li class="nav-item">
                 <a href="notifications.php" class="nav-link <?php echo ($current_page == 'notifications.php') ? 'active' : 'link-dark'; ?>">
                     <i class="bi bi-bell me-2"></i>การแจ้งเตือน
+                    <span id="notification-badge" class="badge rounded-pill bg-danger" style="display:none;">0</span>
                 </a>
             </li>
             <li>

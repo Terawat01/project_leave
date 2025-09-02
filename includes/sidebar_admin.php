@@ -5,13 +5,27 @@ if (!isset($_SESSION['user_id']) || $_SESSION['position_id'] != 4) {
     exit();
 }
 $current_page = basename($_SERVER['PHP_SELF']);
+
+// เตรียมจำนวนแจ้งเตือนค้างอ่านสำหรับ badge บน sidebar
+$sideNotifCount = 0;
+try {
+    require_once __DIR__ . '/db.php';
+    $adminId = $_SESSION['user_id'];
+    $res = $conn->query("SELECT COUNT(*) AS c FROM notifications WHERE emp_id = '{$conn->real_escape_string($adminId)}' AND is_read = 0");
+    if ($res) {
+        $row = $res->fetch_assoc();
+        $sideNotifCount = (int)($row['c'] ?? 0);
+    }
+} catch (Throwable $e) {
+    $sideNotifCount = 0;
+}
 ?>
 <div class="d-flex">
-    <div class="d-flex flex-column flex-shrink-0 p-3 bg-white" style="width: 280px; height: 100vh; position:fixed;">
-        <a href="dashboard.php" class="d-flex align-items-center mb-3 mb-md-0 me-md-auto link-dark text-decoration-none">
+    <div class="d-flex flex-column flex-shrink-0 p-3 bg-white" style="width: 280px; height: 100vh; position:fixed; overflow-y:auto;">
+        <a href="dashboard.php" class="d-flex align-items-center mb-1 me-md-auto link-dark text-decoration-none">
             <span class="fs-4">Leave System</span>
         </a>
-        <div class="text-muted small">ผู้ดูแลระบบ</div>
+        <div class="text-muted small mb-2">ผู้ดูแลระบบ</div>
         <hr>
         <ul class="nav nav-pills flex-column mb-auto">
             <li class="nav-item">
@@ -34,6 +48,16 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <i class="bi bi-calendar3 me-2"></i>จัดการวันหยุด
                 </a>
             </li>
+            <li>
+                <a href="notifications.php" class="nav-link d-flex align-items-center <?php echo ($current_page == 'notifications.php') ? 'active' : 'link-dark'; ?>">
+                    <i class="bi bi-bell me-2"></i>การแจ้งเตือน
+                    <span id="notification-badge-side"
+                          class="badge rounded-pill bg-danger ms-auto"
+                          style="<?php echo ($sideNotifCount > 0 ? 'display:inline-block;' : 'display:none;'); ?>">
+                        <?php echo $sideNotifCount; ?>
+                    </span>
+                </a>
+            </li>
         </ul>
         <hr>
         <div class="dropdown">
@@ -46,4 +70,5 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </ul>
         </div>
     </div>
-    <div style="width: 20px;"></div> <div class="container-fluid">
+    <div style="width: 20px;"></div>
+    <div class="container-fluid">

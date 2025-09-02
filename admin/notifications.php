@@ -1,21 +1,21 @@
 <?php
 // ---- Bootstrap session & auth (ทำก่อนมี output เสมอ) ----
 session_start();
-if (!isset($_SESSION['user_id']) || $_SESSION['position_id'] == 4) {
+if (!isset($_SESSION['user_id']) || $_SESSION['position_id'] != 4) {
     header("Location: ../logout.php");
     exit();
 }
 
 require_once '../includes/db.php';
 
-$emp_id = $_SESSION['user_id'];
+$admin_id = $_SESSION['user_id'];
 
 // ---- Handle actions BEFORE any output ----
 // ใช้ POST เป็นหลัก (ปลอดภัยกว่า) และรองรับ GET เป็น fallback
 $action = $_POST['action'] ?? ($_GET['action'] ?? null);
 if ($action === 'read_all') {
     $stmt = $conn->prepare("UPDATE notifications SET is_read = 1 WHERE emp_id = ?");
-    $stmt->bind_param("s", $emp_id);
+    $stmt->bind_param("s", $admin_id);
     $stmt->execute();
     $stmt->close();
 
@@ -25,31 +25,30 @@ if ($action === 'read_all') {
 
 // ---- Query data BEFORE output (โอเค) ----
 $stmt = $conn->prepare("SELECT * FROM notifications WHERE emp_id = ? ORDER BY created_at DESC");
-$stmt->bind_param("s", $emp_id);
+$stmt->bind_param("s", $admin_id);
 $stmt->execute();
 $notifications = $stmt->get_result();
 
 $unread_count = 0;
-if ($res = $conn->query("SELECT COUNT(*) AS c FROM notifications WHERE emp_id = '".$conn->real_escape_string($emp_id)."' AND is_read = 0")) {
+if ($res = $conn->query("SELECT COUNT(*) AS c FROM notifications WHERE emp_id = '".$conn->real_escape_string($admin_id)."' AND is_read = 0")) {
     $row = $res->fetch_assoc();
     $unread_count = (int)($row['c'] ?? 0);
 }
 
-// icon + สี ให้เหมือนของ admin
 function getNotificationIcon($type) {
     switch ($type) {
-        case 'approved':     return ['icon' => 'bi-check-circle-fill',        'color' => 'text-success'];
-        case 'rejected':     return ['icon' => 'bi-x-circle-fill',            'color' => 'text-danger'];
-        case 'new_request':  return ['icon' => 'bi-clock-fill',               'color' => 'text-warning'];
-        case 'system':       return ['icon' => 'bi-gear-fill',                'color' => 'text-primary'];
-        case 'warning':      return ['icon' => 'bi-exclamation-triangle-fill','color' => 'text-danger'];
-        default:             return ['icon' => 'bi-bell-fill',                'color' => 'text-secondary'];
+        case 'approved':  return ['icon' => 'bi-check-circle-fill',        'color' => 'text-success'];
+        case 'rejected':  return ['icon' => 'bi-x-circle-fill',            'color' => 'text-danger'];
+        case 'new_request': return ['icon' => 'bi-clock-fill',            'color' => 'text-warning'];
+        case 'system':    return ['icon' => 'bi-gear-fill',               'color' => 'text-primary'];
+        case 'warning':   return ['icon' => 'bi-exclamation-triangle-fill','color' => 'text-danger'];
+        default:          return ['icon' => 'bi-bell-fill',               'color' => 'text-secondary'];
     }
 }
 
 // ---- หลังจากนี้ค่อยเริ่ม output ----
 require_once '../includes/header.php';
-require_once '../includes/sidebar_employee.php';
+require_once '../includes/sidebar_admin.php';
 ?>
 <div class="main-content p-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -63,15 +62,13 @@ require_once '../includes/sidebar_employee.php';
         <!-- ใช้ POST เพื่อความปลอดภัย และหลีกเลี่ยงการใช้ header() หลังมี output -->
         <form method="post" action="notifications.php" class="m-0">
             <input type="hidden" name="action" value="read_all">
-            <button type="submit" class="btn btn-sm btn-outline-secondary">
-                ทำเครื่องหมายว่าอ่านแล้วทั้งหมด
-            </button>
+            <button type="submit" class="btn btn-sm btn-outline-secondary">ทำเครื่องหมายว่าอ่านแล้วทั้งหมด</button>
         </form>
     </div>
 
     <div class="list-group">
         <?php if ($notifications->num_rows > 0): ?>
-            <?php while($row = $notifications->fetch_assoc()):
+            <?php while ($row = $notifications->fetch_assoc()):
                 $icon = getNotificationIcon($row['type']);
             ?>
             <div class="list-group-item list-group-item-action <?php echo ($row['is_read'] == 0) ? 'bg-light' : ''; ?>">

@@ -1,4 +1,10 @@
 <?php
+session_start();
+if (!isset($_SESSION['user_id']) || $_SESSION['position_id'] != 4) {
+    header("Location: login.php");
+    exit();
+}
+
 require_once '../includes/db.php';
 require_once '../includes/header.php';
 require_once '../includes/sidebar_admin.php';
@@ -43,7 +49,7 @@ for ($i = 5; $i >= 0; $i--) {
     $bar_chart_data[] = $count;
 }
 ?>
-<div class="main-content p-4">
+<div class="main-content p-4 ">
     <h4 class="mb-1">แดชบอร์ดผู้ดูแลระบบ</h4>
     <p class="text-muted">ภาพรวมระบบการลางานองค์กร</p>
 
