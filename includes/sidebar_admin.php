@@ -21,7 +21,7 @@ try {
 }
 ?>
 <div class="d-flex">
-    <div class="d-flex flex-column flex-shrink-0 p-3 bg-white" style="width: 280px; height: 100vh; position:fixed; overflow-y:auto;">
+    <div class="sidebar d-flex flex-column flex-shrink-0 p-3 bg-white" style="width:280px; overflow-y:auto;">
         <a href="dashboard.php" class="d-flex align-items-center mb-1 me-md-auto link-dark text-decoration-none">
             <span class="fs-4">Leave System</span>
         </a>

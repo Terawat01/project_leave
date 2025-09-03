@@ -1,54 +1,51 @@
+:root{
+  --navH: 70px; /* ความสูง navbar ถ้าเปลี่ยน header ใหญ่/เล็ก ปรับตรงนี้จุดเดียว */
+}
+
+* { box-sizing: border-box; }
+
 body {
-    background-color: #f0f2f5;
-    font-family: 'Sarabun', sans-serif;
-    padding-top: 70px;
-    margin-left: 260px; padding-top: 30px; }
+  background-color: #f0f2f5;
+  font-family: 'Sarabun', sans-serif;
+  padding-top: var(--navH);               /* ดันเนื้อหาไม่ให้ซ้อนใต้ header */
+}
 
-
-.sidebar {
+/* === Sidebar fix ใต้ header === */
+.sidebar,
+.app-sidebar{
   position: fixed;
-  top: 70px; /* ให้ตรงกับ padding-top ของ body */
+  top: var(--navH);                       /* เริ่มใต้ header */
   left: 0;
-  width: 250px;
-  height: calc(100vh - 70px);
+  width: 280px;
+  height: calc(100vh - var(--navH));      /* เต็มหน้าจอแต่หักส่วน header */
   overflow-y: auto;
   background: #fff;
   border-right: 1px solid #e0e0e0;
 }
 
-.main-content {
-    margin-left: 260px;
-    padding-top: 30px;
+/* เนื้อหาหลักขยับหลบ sidebar */
+.main-content{
+  margin-left: 300px; /* 280 + เผื่อระยะช่องว่าง */
+  padding: 20px;
 }
 
-.navbar-custom {
-    background-color: #ffffff;
-    border-bottom: 1px solid #e0e0e0;
-}
-@media (max-width: 768px) {
-    .sidebar {
-        width: 200px;
-    }
-    .main-content {
-        margin-left: 210px;
-    }
+/* ถ้าใช้ class นี้กับ navbar อื่น */
+.navbar-custom{
+  background-color: #ffffff;
+  border-bottom: 1px solid #e0e0e0;
 }
 
-@media (max-width: 576px) {
-    .sidebar {
-        display: none;
-    }
-    .main-content {
-        margin-left: 0;
-    }
+/* ตารางหัวติดบน (ถ้ามี) */
+.table-responsive{ max-height: 600px; overflow-y:auto; }
+.table thead th{ position: sticky; top: 0; background-color:#f8f9fa; z-index:1; }
+
+/* Responsive */
+@media (max-width: 992px){
+  .sidebar, .app-sidebar{ width: 240px; }
+  .main-content{ margin-left: 260px; }
 }
-.table-responsive {
-  max-height: 600px;
-  overflow-y: auto;
-}
-.table thead th {
-  position: sticky;
-  top: 0;
-  background-color: #f8f9fa;
-  z-index: 1;
+
+@media (max-width: 768px){
+  .sidebar, .app-sidebar{ display:none; }
+  .main-content{ margin-left: 0; }
 }

@@ -18,8 +18,8 @@ $taken_stmt->bind_param("ss", $emp_id, $current_year);
 $taken_stmt->execute();
 $days_taken = $taken_stmt->get_result()->fetch_assoc()['days_taken'] ?? 0;
 
-// Assume total leave entitlement (e.g., 15 days total per year)
-$total_leave_entitlement = 15;
+// Assume total leave entitlement (e.g., 30 days total per year)
+$total_leave_entitlement = 30;
 $remaining_leave = $total_leave_entitlement - $days_taken;
 
 // Get recent leave requests

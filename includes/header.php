@@ -2,6 +2,30 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+
+/* ---------- เตรียมข้อมูลแจ้งเตือน ---------- */
+$notifCount = 0;
+$notifUrl   = '../employee/notifications.php';
+
+if (isset($_SESSION['user_id'])) {
+    // ชี้ลิงก์ปลายทางตามบทบาท
+    if (!empty($_SESSION['position_id']) && (int)$_SESSION['position_id'] === 4) {
+        $notifUrl = '../admin/notifications.php';
+    }
+
+    // ดึงจำนวนแจ้งเตือนค้างอ่าน
+    try {
+        require_once __DIR__ . '/db.php';
+        $uid = $conn->real_escape_string($_SESSION['user_id']);
+        if ($res = $conn->query("SELECT COUNT(*) AS c FROM notifications WHERE emp_id='{$uid}' AND is_read=0")) {
+            $row = $res->fetch_assoc();
+            $notifCount = (int)($row['c'] ?? 0);
+        }
+    } catch (Throwable $e) {
+        // เงียบไว้ใน header เพื่อไม่ให้มี output แปลกๆ
+        $notifCount = 0;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="th">
@@ -18,94 +42,112 @@ if (session_status() === PHP_SESSION_NONE) {
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-
 <?php if (isset($_SESSION['user_id'])): ?>
-<nav class="navbar navbar-expand-lg navbar-light bg-light shadow-sm px-3">
+<nav class="navbar navbar-expand-lg navbar-light bg-light shadow-sm px-3 fixed-top">
     <a class="navbar-brand fw-bold" href="#">ระบบจัดการการลา</a>
+
     <div class="ms-auto d-flex align-items-center">
-        <!-- Notification Bell -->
+        <!-- ปุ่มกระดิ่งแจ้งเตือน -->
         <div class="position-relative me-3">
-            <a href="../employee/notifications.php" class="btn btn-light position-relative">
+            <a href="<?php echo htmlspecialchars($notifUrl); ?>" class="btn btn-light position-relative">
                 <i class="bi bi-bell fs-4"></i>
                 <span id="notification-badge"
                       class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
-                      style="display:none;">0</span>
+                      style="<?php echo ($notifCount > 0 ? 'display:inline;' : 'display:none;'); ?>">
+                    <?php echo $notifCount; ?>
+                </span>
             </a>
         </div>
-        <!-- Logout Button -->
+        <!-- ปุ่มออกจากระบบ -->
         <a href="../logout.php" class="btn btn-outline-danger btn-sm">
             <i class="bi bi-box-arrow-right"></i> ออกจากระบบ
         </a>
     </div>
 </nav>
 
-<!-- Toast Container -->
+<!-- Toast Container สำหรับแจ้งเตือนแบบลอย -->
 <div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999;"></div>
 
 <script>
-document.addEventListener("DOMContentLoaded", () => {
-    const userId = <?php echo json_encode($_SESSION['user_id']); ?>;
-    let ws;
+// ปรับระยะห่างอัตโนมัติให้คอนเทนต์และ sidebar ไม่โดน navbar fixed-top ทับ
+document.addEventListener('DOMContentLoaded', () => {
+  const nav = document.querySelector('.navbar.fixed-top');
+  if (nav) {
+    const h = nav.offsetHeight;
+    document.documentElement.style.scrollPaddingTop = h + 'px';
+    document.body.style.paddingTop = h + 'px';
+    document.querySelectorAll('.sidebar').forEach(el => {
+      el.style.top = h + 'px';
+      el.style.height = `calc(100vh - ${h}px)`;
+    });
+  }
 
-    function connectWebSocket() {
-        ws = new WebSocket(`ws://localhost:8080/?user_id=${userId}`);
+  // ---- WebSocket สำหรับอัปเดต badge/แสดง toast แบบเรียลไทม์ ----
+  const userId = <?php echo json_encode($_SESSION['user_id']); ?>;
+  let ws;
 
-        ws.onopen = () => console.log("✅ WebSocket connected");
+  function connectWebSocket() {
+    try {
+      ws = new WebSocket(`ws://localhost:8080/?user_id=${encodeURIComponent(userId)}`);
+    } catch (e) { return; }
 
-        ws.onmessage = (event) => {
-            try {
-                const notification = JSON.parse(event.data);
+    ws.onopen = () => console.log("✅ WebSocket connected");
 
-                // Update badge counter
-                const badge = document.getElementById("notification-badge");
-                if (badge) {
-                    let count = parseInt(badge.innerText) || 0;
-                    badge.innerText = count + 1;
-                    badge.style.display = "inline";
-                }
+    ws.onmessage = (event) => {
+      try {
+        const n = JSON.parse(event.data);
 
-                // Show toast notification
-                showToast(notification.title, notification.message);
+        // อัปเดต badge บน Navbar
+        const topBadge = document.getElementById("notification-badge");
+        if (topBadge) {
+          let c = parseInt(topBadge.innerText) || 0;
+          topBadge.innerText = String(c + 1);
+          topBadge.style.display = "inline";
+        }
 
-            } catch (e) {
-                console.error("Invalid WebSocket data:", event.data);
-            }
-        };
+        // อัปเดต badge บน Sidebar (ถ้ามี)
+        const sideBadge = document.getElementById("notification-badge-side");
+        if (sideBadge) {
+          let sc = parseInt(sideBadge.innerText) || 0;
+          sideBadge.innerText = String(sc + 1);
+          sideBadge.style.display = "inline-block";
+        }
 
-        ws.onclose = () => {
-            console.warn("⚠️ WebSocket disconnected, retrying in 3s...");
-            setTimeout(connectWebSocket, 3000);
-        };
+        showToast(n.title || "การแจ้งเตือน", n.message || "");
+      } catch (e) {
+        console.error("Invalid WebSocket data:", event.data);
+      }
+    };
 
-        ws.onerror = (err) => {
-            console.error("❌ WebSocket error:", err);
-            ws.close();
-        };
-    }
+    ws.onclose = () => {
+      console.warn("⚠️ WebSocket disconnected. Reconnecting in 3s…");
+      setTimeout(connectWebSocket, 3000);
+    };
 
-    // Show toast notification
-    function showToast(title, message) {
-        const container = document.getElementById("toast-container");
+    ws.onerror = (err) => {
+      console.error("❌ WebSocket error:", err);
+      try { ws.close(); } catch (e) {}
+    };
+  }
 
-        const toast = document.createElement("div");
-        toast.classList.add("toast", "align-items-center", "text-bg-primary", "border-0", "show", "mb-2");
-        toast.role = "alert";
-        toast.innerHTML = `
-            <div class="d-flex">
-                <div class="toast-body">
-                    <strong>${title}</strong><br>${message}
-                </div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-            </div>
-        `;
-        container.appendChild(toast);
+  function showToast(title, message) {
+    const container = document.getElementById("toast-container");
+    const toast = document.createElement("div");
+    toast.classList.add("toast", "align-items-center", "text-bg-primary", "border-0", "show", "mb-2");
+    toast.role = "alert";
+    toast.innerHTML = `
+      <div class="d-flex">
+        <div class="toast-body">
+          <strong>${title}</strong><br>${message}
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    `;
+    container.appendChild(toast);
+    setTimeout(() => { toast.remove(); }, 5000);
+  }
 
-        setTimeout(() => {
-            toast.remove();
-        }, 5000);
-    }
-
-    connectWebSocket();
+  connectWebSocket();
 });
 </script>
 <?php endif; ?>
