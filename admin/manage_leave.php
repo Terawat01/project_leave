@@ -1,167 +1,229 @@
 <?php
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['position_id'] != 4) {
-    header("Location: login.php");
+    header("Location: ../logout.php");
     exit();
 }
 
 require_once '../includes/db.php';
 
-if (isset($_GET['action']) && isset($_GET['id'])) {
-    $action = $_GET['action'];
-    $leave_id = $_GET['id'];
-    $approved_date = date('Y-m-d');
-    $new_status_id = '';
-    $notification_title = '';
-    $notification_message = '';
-    $notification_type = '';
+/* ========= 1) รับค่าฟิลเตอร์ ========= */
+$search_name   = $_GET['search'] ?? '';   // ← ค้นหาจากชื่อพนักงาน
+$status_filter = $_GET['status'] ?? '';
+$type_filter   = $_GET['type']   ?? '';
+$from_date     = $_GET['from']   ?? '';
+$to_date       = $_GET['to']     ?? '';
 
-    // Get Emp_ID for notification
-    $stmt = $conn->prepare("SELECT Emp_ID, Leave_Type_ID, Start_leave_date, End_Leave_date FROM emp_leave WHERE Leave_ID = ?");
-    $stmt->bind_param("s", $leave_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $leave_row = $result->fetch_assoc();
-    $stmt->close();
+/* ========= 2) ดึงรายการสำหรับ dropdown ========= */
+$statuses    = $conn->query("SELECT Leave_Status_ID, Leave_Type_Name FROM leave_status");
+$leave_types = $conn->query("SELECT Leave_Type_ID, Leave_Type_Name FROM leave_type");
 
-    if (!$leave_row) {
-        header("Location: manage_leave.php");
-        exit();
-    }
+/* ========= 3) Query หลัก + ตัวกรอง (Prepared) ========= */
+$sql = "
+    SELECT 
+        el.Leave_ID,
+        e.Emp_Name,
+        lt.Leave_Type_Name,
+        el.Start_leave_date,
+        el.End_Leave_date,
+        el.Reason,
+        el.Leave_Status_ID,
+        ls.Leave_Type_Name AS status_name
+    FROM emp_leave el
+    JOIN employee e     ON el.Emp_ID = e.Emp_id
+    JOIN leave_type lt  ON el.Leave_Type_ID = lt.Leave_Type_ID
+    JOIN leave_status ls ON el.Leave_Status_ID = ls.Leave_Status_ID
+    WHERE 1=1
+";
 
-    $emp_id_to_notify = $leave_row['Emp_ID'];
-    $leave_type_id = $leave_row['Leave_Type_ID'];
-    $start_date = date('d M Y', strtotime($leave_row['Start_leave_date']));
-    $end_date   = date('d M Y', strtotime($leave_row['End_Leave_date']));
+$params = [];
+$types  = "";
 
-    // Get leave type name
-    $stmt = $conn->prepare("SELECT Leave_Type_Name FROM leave_type WHERE Leave_Type_ID = ?");
-    $stmt->bind_param("s", $leave_type_id);
-    $stmt->execute();
-    $leave_type = $stmt->get_result()->fetch_assoc()['Leave_Type_Name'];
-    $stmt->close();
-
-    // Define status & notification content
-    if ($action === 'approve') {
-        $new_status_id = '1';
-        $notification_type = 'approved';
-        $notification_title = 'คำขอลาได้รับการอนุมัติ';
-        $notification_message = "คำขอลา $leave_type ของคุณ ($start_date - $end_date) ได้รับการอนุมัติแล้ว";
-    } elseif ($action === 'reject') {
-        $new_status_id = '2';
-        $notification_type = 'rejected';
-        $notification_title = 'คำขอลาถูกปฏิเสธ';
-        $notification_message = "คำขอลา $leave_type ของคุณ ($start_date - $end_date) ไม่ได้รับการอนุมัติ";
-    }
-
-    // Update leave status
-    if (!empty($new_status_id)) {
-        $stmt = $conn->prepare("UPDATE emp_leave SET Leave_Status_ID = ?, Approved_date = ? WHERE Leave_ID = ?");
-        $stmt->bind_param("sss", $new_status_id, $approved_date, $leave_id);
-        $stmt->execute();
-        $stmt->close();
-
-        // Insert into notifications table
-        $stmt = $conn->prepare("INSERT INTO notifications (emp_id, type, title, message, is_read) VALUES (?, ?, ?, ?, 0)");
-        $stmt->bind_param("ssss", $emp_id_to_notify, $notification_type, $notification_title, $notification_message);
-        $stmt->execute();
-        $stmt->close();
-
-        // Send WebSocket notification
-        $payload = json_encode([
-            'emp_id' => $emp_id_to_notify,
-            'title' => $notification_title,
-            'message' => $notification_message
-        ]);
-
-        $ch = curl_init('http://localhost:8080');
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Content-Length: ' . strlen($payload)
-        ]);
-        curl_exec($ch);
-        curl_close($ch);
-
-        header("Location: manage_leave.php");
-        exit();
-    }
+// ค้นหาจากชื่อพนักงาน
+if ($search_name !== '') {
+    $sql    .= " AND e.Emp_Name LIKE ? ";
+    $params[] = "%".$search_name."%";
+    $types   .= "s";
 }
 
-require_once '../includes/header.php';
-require_once '../includes/sidebar_admin.php';
+// กรองสถานะ
+if ($status_filter !== '') {
+    $sql    .= " AND el.Leave_Status_ID = ? ";
+    $params[] = $status_filter;
+    $types   .= "s";
+}
 
-// Fetch all leave requests (แก้ชื่อคอลัมน์)
-$result = $conn->query("
-    SELECT el.*, e.Emp_Name, lt.Leave_Type_Name, ls.Leave_Type_Name AS status
-    FROM emp_leave el
-    JOIN employee e ON el.Emp_ID = e.Emp_id
-    JOIN leave_type lt ON el.Leave_Type_ID = lt.Leave_Type_ID
-    JOIN leave_status ls ON el.Leave_Status_ID = ls.Leave_Status_ID
+// กรองประเภทการลา
+if ($type_filter !== '') {
+    $sql    .= " AND el.Leave_Type_ID = ? ";
+    $params[] = $type_filter;
+    $types   .= "s";
+}
+
+// กรองช่วงวันที่แบบทับซ้อนช่วง
+if ($from_date && $to_date) {
+    $sql    .= " AND NOT (el.End_Leave_date < ? OR el.Start_leave_date > ?) ";
+    $params[] = $from_date; $types .= "s";
+    $params[] = $to_date;   $types .= "s";
+} elseif ($from_date) {
+    $sql    .= " AND el.End_Leave_date >= ? ";
+    $params[] = $from_date; $types .= "s";
+} elseif ($to_date) {
+    $sql    .= " AND el.Start_leave_date <= ? ";
+    $params[] = $to_date;   $types .= "s";
+}
+
+// เรียง: รอดำเนินการ → อนุมัติ → อื่น ๆ + วันที่เริ่มล่าสุดก่อน
+$sql .= "
     ORDER BY
         CASE el.Leave_Status_ID
             WHEN '3' THEN 1
             WHEN '1' THEN 2
             ELSE 3
         END,
-        el.Request_date DESC
-");
+        el.Start_leave_date DESC
+";
+
+$stmt = $conn->prepare($sql);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$result = $stmt->get_result();
+
+/* ========= 4) แสดงผล ========= */
+require_once '../includes/header.php';
+require_once '../includes/sidebar_admin.php';
+
+// helper badge สี
+function renderStatusBadge($id, $text) {
+    if ($id == '1') return '<span class="badge bg-success">'.$text.'</span>';
+    if ($id == '2') return '<span class="badge bg-danger">'.$text.'</span>';
+    if ($id == '3') return '<span class="badge bg-warning text-dark">'.$text.'</span>';
+    return '<span class="badge bg-secondary">'.$text.'</span>';
+}
 ?>
 <div class="main-content p-4">
-    <h4 class="mb-4">จัดการการลา</h4>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0">จัดการการลา</h4>
+    </div>
+
+    <!-- ฟอร์มค้นหา/กรอง (ปุ่มอยู่ในฟอร์มเดียวกัน) -->
+    <form method="get" action="manage_leave.php" class="card mb-4" id="filterForm">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
+                <h5 class="card-title mb-2 mb-sm-0">
+                    <i class="bi bi-funnel"></i> ค้นหาและกรอง
+                </h5>
+                <div class="ms-auto">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="bi bi-search"></i> ค้นหา
+                    </button>
+                    <a href="manage_leave.php" class="btn btn-secondary">
+                        <i class="bi bi-x-circle"></i> ล้างค่า
+                    </a>
+                </div>
+            </div>
+
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">ค้นหาชื่อพนักงาน</label>
+                    <input
+                        type="text"
+                        name="search"
+                        class="form-control"
+                        placeholder="เช่น สมชาย"
+                        value="<?= htmlspecialchars($search_name) ?>"
+                    >
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label">สถานะ</label>
+                    <select name="status" class="form-select">
+                        <option value="">ทั้งหมด</option>
+                        <?php if ($statuses && $statuses->num_rows > 0): ?>
+                            <?php while($s = $statuses->fetch_assoc()): ?>
+                                <option value="<?= htmlspecialchars($s['Leave_Status_ID']) ?>"
+                                    <?= ($status_filter !== '' && $status_filter == $s['Leave_Status_ID']) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($s['Leave_Type_Name']) ?>
+                                </option>
+                            <?php endwhile; ?>
+                        <?php endif; ?>
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label">ประเภทการลา</label>
+                    <select name="type" class="form-select">
+                        <option value="">ทั้งหมด</option>
+                        <?php if ($leave_types && $leave_types->num_rows > 0): ?>
+                            <?php while($t = $leave_types->fetch_assoc()): ?>
+                                <option value="<?= htmlspecialchars($t['Leave_Type_ID']) ?>"
+                                    <?= ($type_filter !== '' && $type_filter == $t['Leave_Type_ID']) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($t['Leave_Type_Name']) ?>
+                                </option>
+                            <?php endwhile; ?>
+                        <?php endif; ?>
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label">วันที่เริ่ม (From)</label>
+                    <input type="date" name="from" class="form-control" value="<?= htmlspecialchars($from_date) ?>">
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label">วันที่สิ้นสุด (To)</label>
+                    <input type="date" name="to" class="form-control" value="<?= htmlspecialchars($to_date) ?>">
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <!-- ตารางรายการ -->
     <div class="card">
         <div class="card-body">
-            <table class="table table-striped table-hover">
-                <thead>
-                    <tr>
-                        <th>พนักงาน</th>
-                        <th>ประเภท</th>
-                        <th>วันที่เริ่มลา - วันที่สิ้นสุด</th>
-                        <th>เหตุผล</th>
-                        <th>สถานะ</th>
-                        <th>ดำเนินการ</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if ($result->num_rows > 0): ?>
-                        <?php while($row = $result->fetch_assoc()): ?>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
                         <tr>
-                            <td><?= htmlspecialchars($row['Emp_Name']) ?></td>
-                            <td><?= htmlspecialchars($row['Leave_Type_Name']) ?></td>
-                            <td><?= htmlspecialchars($row['Start_leave_date']) ?> - <?= htmlspecialchars($row['End_Leave_date']) ?></td>
-                            <td><?= htmlspecialchars($row['Reason'] ?: '-') ?></td>
-                            <td>
-                                <?php
-                                    if ($row['Leave_Status_ID'] == '1') {
-                                        echo "<span class='badge bg-success'>อนุมัติ</span>";
-                                    } elseif ($row['Leave_Status_ID'] == '2') {
-                                        echo "<span class='badge bg-danger'>ไม่อนุมัติ</span>";
-                                    } else {
-                                        echo "<span class='badge bg-warning text-dark'>รออนุมัติ</span>";
-                                    }
-                                ?>
-                            </td>
-                            <td>
-                                <?php if ($row['Leave_Status_ID'] == '3'): ?>
-                                    <a href="?action=approve&id=<?= $row['Leave_ID'] ?>" class="btn btn-success btn-sm">อนุมัติ</a>
-                                    <a href="?action=reject&id=<?= $row['Leave_ID'] ?>" class="btn btn-danger btn-sm">ปฏิเสธ</a>
-                                <?php else: ?>
-                                    -
-                                <?php endif; ?>
-                            </td>
+                            <th>พนักงาน</th>
+                            <th>ประเภท</th>
+                            <th>วันที่เริ่มลา - วันที่สิ้นสุด</th>
+                            <th>เหตุผล</th>
+                            <th>สถานะ</th>
+                            <th class="text-center">ดำเนินการ</th>
                         </tr>
+                    </thead>
+                    <tbody>
+                    <?php if ($result && $result->num_rows > 0): ?>
+                        <?php while($row = $result->fetch_assoc()): ?>
+                            <tr>
+                                <td><?= htmlspecialchars($row['Emp_Name']) ?></td>
+                                <td><?= htmlspecialchars($row['Leave_Type_Name']) ?></td>
+                                <td><?= htmlspecialchars($row['Start_leave_date']) ?> - <?= htmlspecialchars($row['End_Leave_date']) ?></td>
+                                <td><?= htmlspecialchars($row['Reason'] ?: '-') ?></td>
+                                <td><?= renderStatusBadge($row['Leave_Status_ID'], $row['status_name']) ?></td>
+                                <td class="text-center">
+                                    <?php if ($row['Leave_Status_ID'] == '3'): ?>
+                                        <a href="manage_leave.php?action=approve&id=<?= urlencode($row['Leave_ID']) ?>" class="btn btn-success btn-sm">อนุมัติ</a>
+                                        <a href="manage_leave.php?action=reject&id=<?= urlencode($row['Leave_ID']) ?>" class="btn btn-danger btn-sm">ปฏิเสธ</a>
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
                         <?php endwhile; ?>
                     <?php else: ?>
-                        <tr><td colspan="6" class="text-center text-muted">ไม่มีข้อมูลการลา</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted">ไม่พบข้อมูลตามเงื่อนไข</td></tr>
                     <?php endif; ?>
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
 <?php
 require_once '../includes/footer.php';
+$stmt->close();
 $conn->close();
-?>

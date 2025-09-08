@@ -1,30 +1,35 @@
 <?php
 require_once '../includes/db.php';
-require_once '../includes/header.php';
-require_once '../includes/sidebar_employee.php';
 
-
-// Handle Cancel Action
+// ----- ยกเลิกคำขอ (ต้องทำก่อนมี output) -----
 if (isset($_GET['action']) && $_GET['action'] == 'cancel' && isset($_GET['id'])) {
+    session_start();
     $leave_id_to_cancel = $_GET['id'];
-    $current_emp_id = $_SESSION['user_id'];
+    $current_emp_id = $_SESSION['user_id'] ?? '';
 
-    $stmt = $conn->prepare("DELETE FROM emp_leave WHERE Leave_ID = ? AND Emp_ID = ? AND Leave_Status_ID = '3'");
-    $stmt->bind_param("ss", $leave_id_to_cancel, $current_emp_id);
-    $stmt->execute();
-    $stmt->close();
+    if ($current_emp_id) {
+        $stmtCancel = $conn->prepare("DELETE FROM emp_leave WHERE Leave_ID = ? AND Emp_ID = ? AND Leave_Status_ID = '3'");
+        $stmtCancel->bind_param("ss", $leave_id_to_cancel, $current_emp_id);
+        $stmtCancel->execute();
+        $stmtCancel->close();
+    }
     header("Location: history.php");
     exit();
 }
 
-$emp_id = $_SESSION['user_id'];
+require_once '../includes/header.php';
+require_once '../includes/sidebar_employee.php';
 
-// Get filter values from URL
-$search_query = $_GET['search'] ?? '';
+$emp_id = $_SESSION['user_id'] ?? '';
+
+// ----- รับค่าตัวกรองจาก URL -----
+$search_query = $_GET['search'] ?? '';  // ค้นหา (ประเภท/เหตุผล)
 $status_filter = $_GET['status'] ?? '';
-$type_filter = $_GET['type'] ?? '';
+$type_filter   = $_GET['type']   ?? '';
+$from_date     = $_GET['from']   ?? '';
+$to_date       = $_GET['to']     ?? '';
 
-// Base SQL query
+// ----- Query หลักพร้อมตัวกรอง -----
 $sql = "
     SELECT
         el.Leave_ID,
@@ -45,23 +50,39 @@ $sql = "
 ";
 
 $params = [$emp_id];
-$types = "s";
+$types  = "s";
 
-if (!empty($search_query)) {
+// ค้นหาข้อความ (ประเภทการลา/เหตุผล)
+if ($search_query !== '') {
     $sql .= " AND (lt.Leave_Type_Name LIKE ? OR el.Reason LIKE ?)";
-    $search_term = "%" . $search_query . "%";
-    array_push($params, $search_term, $search_term);
-    $types .= "ss";
+    $search_term = "%".$search_query."%";
+    $params[] = $search_term; $types .= "s";
+    $params[] = $search_term; $types .= "s";
 }
-if (!empty($status_filter)) {
-    $sql .= " AND el.Leave_Status_ID = ?";
-    $params[] = $status_filter;
-    $types .= "s";
+
+// กรองสถานะ
+if ($status_filter !== '') {
+    $sql   .= " AND el.Leave_Status_ID = ? ";
+    $params[] = $status_filter; $types .= "s";
 }
-if (!empty($type_filter)) {
-    $sql .= " AND el.Leave_Type_ID = ?";
-    $params[] = $type_filter;
-    $types .= "s";
+
+// กรองประเภทการลา
+if ($type_filter !== '') {
+    $sql   .= " AND el.Leave_Type_ID = ? ";
+    $params[] = $type_filter; $types .= "s";
+}
+
+// กรองช่วงวันที่แบบทับซ้อนช่วง (เหมือนฝั่งแอดมิน)
+if ($from_date && $to_date) {
+    $sql   .= " AND NOT (el.End_Leave_date < ? OR el.Start_leave_date > ?) ";
+    $params[] = $from_date; $types .= "s";
+    $params[] = $to_date;   $types .= "s";
+} elseif ($from_date) {
+    $sql   .= " AND el.End_Leave_date >= ? ";
+    $params[] = $from_date; $types .= "s";
+} elseif ($to_date) {
+    $sql   .= " AND el.Start_leave_date <= ? ";
+    $params[] = $to_date;   $types .= "s";
 }
 
 $sql .= " ORDER BY el.Start_leave_date DESC";
@@ -71,67 +92,105 @@ if ($stmt) {
     $stmt->bind_param($types, ...$params);
     $stmt->execute();
     $result = $stmt->get_result();
+} else {
+    // ป้องกันหน้าแตกกรณี prepare ล้มเหลว
+    $result = new class {
+        public $num_rows = 0;
+        public function fetch_assoc(){ return null; }
+    };
 }
 
-// Fetch statuses and types for dropdowns
-$statuses = $conn->query("SELECT * FROM leave_status");
-$leave_types = $conn->query("SELECT * FROM leave_type");
+// ดึงสถานะ/ประเภทสำหรับ dropdown
+$statuses    = $conn->query("SELECT Leave_Status_ID, Leave_Type_Name FROM leave_status");
+$leave_types = $conn->query("SELECT Leave_Type_ID, Leave_Type_Name FROM leave_type");
 ?>
 
 <div class="main-content p-4">
     <h4 class="mb-1">ประวัติการลา</h4>
     <p class="text-muted">ประวัติการลาทั้งหมดของคุณ</p>
 
-    <div class="card mb-4">
+    <!-- ฟอร์มค้นหา/กรอง -->
+    <form method="GET" action="history.php" class="card mb-4" id="filterForm">
         <div class="card-body">
-            <h5 class="card-title"><i class="bi bi-funnel"></i> ค้นหาและกรอง</h5>
-            <form method="GET" action="history.php" class="row g-3 align-items-end">
-                <div class="col-md-5">
-                    <label for="search" class="form-label">ค้นหา</label>
-                    <input type="text" class="form-control" name="search" id="search" placeholder="ค้นหาประเภทการลาหรือเหตุผล..." value="<?php echo htmlspecialchars($search_query); ?>">
+            <div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
+                <h5 class="card-title mb-2 mb-sm-0">
+                    <i class="bi bi-funnel"></i> ค้นหาและกรอง
+                </h5>
+                <div class="ms-auto">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="bi bi-search"></i> ค้นหา
+                    </button>
+                    <a href="history.php" class="btn btn-secondary">
+                        <i class="bi bi-x-circle"></i> ล้างค่า
+                    </a>
                 </div>
-                <div class="col-md-3">
+            </div>
+
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label for="search" class="form-label">ค้นหา</label>
+                    <input
+                        type="text"
+                        class="form-control"
+                        name="search" id="search"
+                        placeholder="ค้นหาประเภทการลาหรือเหตุผล..."
+                        value="<?php echo htmlspecialchars($search_query); ?>">
+                </div>
+
+                <div class="col-md-2">
                     <label for="status" class="form-label">สถานะ</label>
                     <select name="status" id="status" class="form-select">
                         <option value="">ทุกสถานะ</option>
-                        <?php while($s = $statuses->fetch_assoc()): ?>
-                            <option value="<?php echo $s['Leave_Status_ID']; ?>" <?php echo ($status_filter == $s['Leave_Status_ID']) ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($s['Leave_Type_Name']); ?>
-                            </option>
-                        <?php endwhile; ?>
+                        <?php if ($statuses && $statuses->num_rows > 0): ?>
+                            <?php while($s = $statuses->fetch_assoc()): ?>
+                                <option value="<?php echo htmlspecialchars($s['Leave_Status_ID']); ?>"
+                                    <?php echo ($status_filter === $s['Leave_Status_ID']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($s['Leave_Type_Name']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        <?php endif; ?>
                     </select>
                 </div>
-                <div class="col-md-3">
+
+                <div class="col-md-2">
                     <label for="type" class="form-label">ประเภทการลา</label>
                     <select name="type" id="type" class="form-select">
                         <option value="">ทุกประเภท</option>
-                        <?php while($lt = $leave_types->fetch_assoc()): ?>
-                            <option value="<?php echo $lt['Leave_Type_ID']; ?>" <?php echo ($type_filter == $lt['Leave_Type_ID']) ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($lt['Leave_Type_Name']); ?>
-                            </option>
-                        <?php endwhile; ?>
+                        <?php if ($leave_types && $leave_types->num_rows > 0): ?>
+                            <?php while($lt = $leave_types->fetch_assoc()): ?>
+                                <option value="<?php echo htmlspecialchars($lt['Leave_Type_ID']); ?>"
+                                    <?php echo ($type_filter === $lt['Leave_Type_ID']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($lt['Leave_Type_Name']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        <?php endif; ?>
                     </select>
                 </div>
-                <div class="col-md-1">
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="bi bi-search"></i> ค้นหา
-                    </button>
+
+                <div class="col-md-2">
+                    <label class="form-label">วันที่เริ่ม (From)</label>
+                    <input type="date" class="form-control" name="from" value="<?php echo htmlspecialchars($from_date); ?>">
                 </div>
-            </form>
+                <div class="col-md-2">
+                    <label class="form-label">วันที่สิ้นสุด (To)</label>
+                    <input type="date" class="form-control" name="to" value="<?php echo htmlspecialchars($to_date); ?>">
+                </div>
+            </div>
         </div>
-    </div>
+    </form>
 
     <div class="card">
         <div class="card-header">
-           <i class="bi bi-clock-history"></i> ประวัติการลา (<?php echo $result->num_rows; ?> รายการ)
+            <i class="bi bi-clock-history"></i>
+            ประวัติการลา (<?php echo (int)$result->num_rows; ?> รายการ)
         </div>
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-striped table-hover">
+                <table class="table table-striped table-hover align-middle">
                     <thead>
                         <tr>
                             <th>ประเภทการลา</th>
-                            <th>วันที่ลา</th>
+                            <th>วันที่เริ่มลา - วันที่สิ้นสุด</th>
                             <th>จำนวนวัน</th>
                             <th>เหตุผล</th>
                             <th>ไฟล์แนบ</th>
@@ -142,21 +201,29 @@ $leave_types = $conn->query("SELECT * FROM leave_type");
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if (isset($result) && $result->num_rows > 0): ?>
+                        <?php if ($result && $result->num_rows > 0): ?>
                             <?php while($row = $result->fetch_assoc()): ?>
                             <tr>
                                 <td><?php echo htmlspecialchars($row['Leave_Type_Name']); ?></td>
-                                <td><?php echo date('d/m/Y', strtotime($row['Start_leave_date'])) . " ถึง " . date('d/m/Y', strtotime($row['End_Leave_date'])); ?></td>
-                                <td><?php echo htmlspecialchars($row['total_days']); ?></td>
+                                <td><?php
+                                    echo date('d/m/Y', strtotime($row['Start_leave_date'])) .
+                                         " ถึง " .
+                                         date('d/m/Y', strtotime($row['End_Leave_date']));
+                                ?></td>
+                                <td><?php echo (int)$row['total_days']; ?></td>
                                 <td><?php echo htmlspecialchars($row['Reason'] ?: '-'); ?></td>
                                 <td>
-                                    <?php if (!empty($row['Document_File'])): 
+                                    <?php if (!empty($row['Document_File'])):
                                         $file_path = "../uploads/" . $row['Document_File'];
                                         $ext = strtolower(pathinfo($row['Document_File'], PATHINFO_EXTENSION));
                                     ?>
-                                        <?php if (in_array($ext, ['jpg','jpeg','png'])): ?>
-                                            <a href="#" data-bs-toggle="modal" data-bs-target="#imageModal" data-img="<?php echo $file_path; ?>">
-                                                <img src="<?php echo $file_path; ?>" alt="แนบไฟล์" style="width:50px; height:auto; border:1px solid #ccc; border-radius:5px;">
+                                        <?php if (in_array($ext, ['jpg','jpeg','png','gif','webp'])): ?>
+                                            <a href="#"
+                                               data-bs-toggle="modal"
+                                               data-bs-target="#imageModal"
+                                               data-img="<?php echo $file_path; ?>">
+                                                <img src="<?php echo $file_path; ?>" alt="แนบไฟล์"
+                                                     style="width:50px; height:auto; border:1px solid #ccc; border-radius:5px;">
                                             </a>
                                         <?php else: ?>
                                             <a href="<?php echo $file_path; ?>" target="_blank" class="btn btn-sm btn-info">
@@ -168,11 +235,18 @@ $leave_types = $conn->query("SELECT * FROM leave_type");
                                     <?php endif; ?>
                                 </td>
                                 <td><?php echo htmlspecialchars($row['status']); ?></td>
-                                <td><?php echo ($row['Approved_date'] != '0000-00-00') ? date('d/m/Y', strtotime($row['Approved_date'])) : '-'; ?></td>
+                                <td><?php
+                                    echo ($row['Approved_date'] && $row['Approved_date'] !== '0000-00-00')
+                                        ? date('d/m/Y', strtotime($row['Approved_date'])) : '-';
+                                ?></td>
                                 <td><?php echo date('d/m/Y', strtotime($row['Request_date'])); ?></td>
                                 <td>
                                     <?php if ($row['Leave_Status_ID'] == '3'): ?>
-                                        <a href="?action=cancel&id=<?php echo $row['Leave_ID']; ?>" class="btn btn-danger btn-sm" onclick="return confirm('คุณต้องการยกเลิกคำขอนี้ใช่หรือไม่?')">ยกเลิก</a>
+                                        <a href="?action=cancel&id=<?php echo urlencode($row['Leave_ID']); ?>"
+                                           class="btn btn-danger btn-sm"
+                                           onclick="return confirm('คุณต้องการยกเลิกคำขอนี้ใช่หรือไม่?')">
+                                           ยกเลิก
+                                        </a>
                                     <?php else: ?>
                                         -
                                     <?php endif; ?>
@@ -218,6 +292,6 @@ imageModal.addEventListener('show.bs.modal', function (event) {
 
 <?php
 require_once '../includes/footer.php';
-if (isset($stmt)) $stmt->close();
+if (isset($stmt) && $stmt instanceof mysqli_stmt) $stmt->close();
 $conn->close();
 ?>
