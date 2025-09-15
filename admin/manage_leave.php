@@ -213,26 +213,28 @@ function renderStatusBadge($id, $text) {
     <!-- ฟอร์มค้นหา/กรอง -->
     <div class="card mb-4">
         <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="card-title mb-0"><i class="bi bi-funnel"></i> ค้นหาและกรอง</h5>
-                <div>
-                    <button type="submit" form="filterForm" class="btn btn-primary me-2">
+            <div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
+                <h5 class="card-title mb-2 mb-sm-0">
+                    <i class="bi bi-funnel"></i> ค้นหาและกรอง
+                </h5>
+                <div class="ms-auto">
+                    <button type="submit" class="btn btn-primary me-2">
                         <i class="bi bi-search"></i> ค้นหา
                     </button>
-                    <a href="manage_leave.php" class="btn btn-secondary">
+                    <a href="history.php" class="btn btn-secondary">
                         <i class="bi bi-x-circle"></i> ล้างค่า
                     </a>
                 </div>
             </div>
 
             <form id="filterForm" class="row g-3 align-items-end" method="get" action="manage_leave.php">
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <label class="form-label">ค้นหา (ชื่อพนักงาน/เหตุผล)</label>
                     <input type="text" name="q" class="form-control" placeholder="เช่น ก้อง หรือ ลาป่วย"
                            value="<?= htmlspecialchars($q) ?>">
                 </div>
 
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label class="form-label">สถานะ</label>
                     <select name="status" class="form-select">
                         <option value="">ทุกสถานะ</option>
@@ -245,7 +247,7 @@ function renderStatusBadge($id, $text) {
                     </select>
                 </div>
 
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label class="form-label">ประเภทการลา</label>
                     <select name="type" class="form-select">
                         <option value="">ทุกประเภท</option>
@@ -258,11 +260,11 @@ function renderStatusBadge($id, $text) {
                     </select>
                 </div>
 
-                <div class="col-md-1">
+                <div class="col-md-2">
                     <label class="form-label">วันที่เริ่ม</label>
                     <input type="date" name="from" class="form-control" value="<?= htmlspecialchars($from_date) ?>">
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-2">
                     <label class="form-label">สิ้นสุด</label>
                     <input type="date" name="to" class="form-control" value="<?= htmlspecialchars($to_date) ?>">
                 </div>
