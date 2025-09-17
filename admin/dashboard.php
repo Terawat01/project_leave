@@ -1,7 +1,8 @@
 <?php
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['position_id'] != 4) {
-    header("Location: login.php");
+    // เดิม: header("Location: login.php");
+    header('Location: ../login.php'); // ← ชี้ขึ้นไประดับบน
     exit();
 }
 
