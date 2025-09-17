@@ -7,13 +7,13 @@ if (session_status() === PHP_SESSION_NONE) {
 $notifCount = 0;
 $notifUrl   = '../employee/notifications.php';
 
-if (isset($_SESSION['user_id'])) {
-    // ชี้ลิงก์ปลายทางตามบทบาท
+if (!empty($_SESSION['user_id'])) {
+    // ชี้ปลายทางหน้าการแจ้งเตือนตามบทบาท
     if (!empty($_SESSION['position_id']) && (int)$_SESSION['position_id'] === 4) {
         $notifUrl = '../admin/notifications.php';
     }
 
-    // ดึงจำนวนแจ้งเตือนค้างอ่าน
+    // ดึงจำนวนแจ้งเตือนค้างอ่าน (ไม่ให้มี output แปลก ๆ หาก DB มีปัญหา)
     try {
         require_once __DIR__ . '/db.php';
         $uid = $conn->real_escape_string($_SESSION['user_id']);
@@ -22,7 +22,6 @@ if (isset($_SESSION['user_id'])) {
             $notifCount = (int)($row['c'] ?? 0);
         }
     } catch (Throwable $e) {
-        // เงียบไว้ใน header เพื่อไม่ให้มี output แปลกๆ
         $notifCount = 0;
     }
 }
@@ -33,16 +32,22 @@ if (isset($_SESSION['user_id'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Leave System</title>
+
+    <!-- Bootstrap CSS & Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <!-- Project CSS -->
     <link rel="stylesheet" href="../style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-<?php if (isset($_SESSION['user_id'])): ?>
+<?php if (!empty($_SESSION['user_id'])): ?>
 <nav class="navbar navbar-expand-lg navbar-light bg-light shadow-sm px-3 fixed-top">
     <a class="navbar-brand fw-bold" href="#">ระบบจัดการการลา</a>
 
@@ -66,23 +71,29 @@ if (isset($_SESSION['user_id'])) {
 </nav>
 
 <!-- Toast Container สำหรับแจ้งเตือนแบบลอย -->
-<div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999;"></div>
+<div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1090;"></div>
+
+<!-- Bootstrap Bundle (จำเป็นต่อ Toast / Dropdown ฯลฯ) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-// ปรับระยะห่างอัตโนมัติให้คอนเทนต์และ sidebar ไม่โดน navbar fixed-top ทับ
+// ปรับระยะห่างอัตโนมัติให้คอนเทนต์และ sidebar ไม่ถูก navbar (fixed-top) ทับ
 document.addEventListener('DOMContentLoaded', () => {
   const nav = document.querySelector('.navbar.fixed-top');
   if (nav) {
-    const h = nav.offsetHeight;
+    const h = nav.offsetHeight || 70;
+    // ให้ scroll-margin/padding เวลาลิงก์ anchor หรือ scroll
     document.documentElement.style.scrollPaddingTop = h + 'px';
+    // กันทับเนื้อหา
     document.body.style.paddingTop = h + 'px';
+    // จัด sidebar (ถ้าใช้คลาส .sidebar ในโปรเจกต์)
     document.querySelectorAll('.sidebar').forEach(el => {
       el.style.top = h + 'px';
       el.style.height = `calc(100vh - ${h}px)`;
     });
   }
 
-  // ---- WebSocket สำหรับอัปเดต badge/แสดง toast แบบเรียลไทม์ ----
+  // ---- WebSocket สำหรับอัปเดต badge + toast แบบเรียลไทม์ ----
   const userId = <?php echo json_encode($_SESSION['user_id']); ?>;
   let ws;
 
@@ -100,7 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // อัปเดต badge บน Navbar
         const topBadge = document.getElementById("notification-badge");
         if (topBadge) {
-          let c = parseInt(topBadge.innerText) || 0;
+          const c = parseInt(topBadge.innerText) || 0;
           topBadge.innerText = String(c + 1);
           topBadge.style.display = "inline";
         }
@@ -108,11 +119,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // อัปเดต badge บน Sidebar (ถ้ามี)
         const sideBadge = document.getElementById("notification-badge-side");
         if (sideBadge) {
-          let sc = parseInt(sideBadge.innerText) || 0;
+          const sc = parseInt(sideBadge.innerText) || 0;
           sideBadge.innerText = String(sc + 1);
           sideBadge.style.display = "inline-block";
         }
 
+        // แสดง toast
         showToast(n.title || "การแจ้งเตือน", n.message || "");
       } catch (e) {
         console.error("Invalid WebSocket data:", event.data);
@@ -144,7 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     `;
     container.appendChild(toast);
-    setTimeout(() => { toast.remove(); }, 5000);
+    setTimeout(() => toast.remove(), 5000);
   }
 
   connectWebSocket();

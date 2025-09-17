@@ -9,9 +9,54 @@ if (!isset($_SESSION['user_id']) || $_SESSION['position_id'] != 4) {
 require_once '../includes/db.php';
 
 /* =========================================================
-   1) Handle actions (approve / reject / delete) — NO OUTPUT
+   1) Handle actions (approve / reject / delete single / bulk)
    ========================================================= */
-$action = $_GET['action'] ?? null;
+// --- Bulk delete (checkbox) ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['bulk_action'] ?? '') === 'delete') {
+    $ids = array_filter($_POST['ids'] ?? [], fn($v) => $v !== '');
+    if (!empty($ids)) {
+        // เอาชื่อไฟล์แนบมาเพื่อลบทิ้งบนดิสก์
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $types = str_repeat('s', count($ids));
+
+        // ดึงไฟล์แนบทั้งหมดของรายการที่จะลบ
+        $sqlFiles = "SELECT Document_File FROM emp_leave WHERE Leave_ID IN ($placeholders)";
+        $stmtF = $conn->prepare($sqlFiles);
+        $stmtF->bind_param($types, ...$ids);
+        $stmtF->execute();
+        $resF = $stmtF->get_result();
+        $files = [];
+        while ($r = $resF->fetch_assoc()) {
+            if (!empty($r['Document_File'])) $files[] = $r['Document_File'];
+        }
+        $stmtF->close();
+
+        // ลบแถว
+        $sqlDel = "DELETE FROM emp_leave WHERE Leave_ID IN ($placeholders)";
+        $stmtDel = $conn->prepare($sqlDel);
+        $stmtDel->bind_param($types, ...$ids);
+        $stmtDel->execute();
+        $affected = $stmtDel->affected_rows;
+        $stmtDel->close();
+
+        // ลบไฟล์แนบ
+        $uploadsDir = realpath(__DIR__ . '/../uploads');
+        foreach ($files as $fn) {
+            $path = realpath(__DIR__ . '/../uploads/' . $fn);
+            if ($path && $uploadsDir && strpos($path, $uploadsDir) === 0 && file_exists($path)) {
+                @unlink($path);
+            }
+        }
+        $_SESSION['flash_msg'] = "ลบรายการที่เลือกแล้วจำนวน {$affected} รายการ";
+    } else {
+        $_SESSION['flash_msg'] = "ยังไม่ได้เลือกรายการที่จะลบ";
+    }
+    header("Location: manage_leave.php");
+    exit();
+}
+
+// --- Single action via GET ---
+$action  = $_GET['action'] ?? null;
 $leave_id = $_GET['id'] ?? null;
 
 if ($action && $leave_id) {
@@ -41,14 +86,14 @@ if ($action && $leave_id) {
 
             if ($action === 'approve') {
                 $new_status_id = '1';
-                $notif_type = 'approved';
+                $notif_type  = 'approved';
                 $notif_title = 'คำขอลาได้รับการอนุมัติ';
-                $notif_msg = "คำขอลา $leave_type_name ของคุณ ($start_date_txt - $end_date_txt) ได้รับการอนุมัติแล้ว";
-            } else { // reject
+                $notif_msg   = "คำขอลา $leave_type_name ของคุณ ($start_date_txt - $end_date_txt) ได้รับการอนุมัติแล้ว";
+            } else {
                 $new_status_id = '2';
-                $notif_type = 'rejected';
+                $notif_type  = 'rejected';
                 $notif_title = 'คำขอลาถูกปฏิเสธ';
-                $notif_msg = "คำขอลา $leave_type_name ของคุณ ($start_date_txt - $end_date_txt) ไม่ได้รับการอนุมัติ";
+                $notif_msg   = "คำขอลา $leave_type_name ของคุณ ($start_date_txt - $end_date_txt) ไม่ได้รับการอนุมัติ";
             }
 
             // อัปเดตสถานะ
@@ -63,7 +108,7 @@ if ($action && $leave_id) {
             $stmt->execute();
             $stmt->close();
 
-            // ส่ง WebSocket
+            // ส่ง WebSocket (ถ้ามีเซิร์ฟเวอร์)
             $payload = json_encode(['emp_id' => $emp_id_to_notify, 'title' => $notif_title, 'message' => $notif_msg]);
             $ch = curl_init('http://localhost:8080');
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
@@ -73,8 +118,8 @@ if ($action && $leave_id) {
                 'Content-Type: application/json',
                 'Content-Length: ' . strlen($payload)
             ]);
-            curl_exec($ch);
-            curl_close($ch);
+            @curl_exec($ch);
+            @curl_close($ch);
         }
 
         header("Location: manage_leave.php");
@@ -82,20 +127,18 @@ if ($action && $leave_id) {
     }
 
     if ($action === 'delete') {
-        // ดึงไฟล์แนบเพื่อลบออกจากโฟลเดอร์
+        // ลบเดี่ยว
         $stmt = $conn->prepare("SELECT Document_File FROM emp_leave WHERE Leave_ID = ?");
         $stmt->bind_param("s", $leave_id);
         $stmt->execute();
         $row = $stmt->get_result()->fetch_assoc();
         $stmt->close();
 
-        // ลบแถวในฐานข้อมูล
         $stmt = $conn->prepare("DELETE FROM emp_leave WHERE Leave_ID = ?");
         $stmt->bind_param("s", $leave_id);
         $stmt->execute();
         $stmt->close();
 
-        // ลบไฟล์แนบ (ถ้ามี)
         if (!empty($row['Document_File'])) {
             $path = realpath(__DIR__ . '/../uploads/' . $row['Document_File']);
             $uploadsDir = realpath(__DIR__ . '/../uploads');
@@ -103,8 +146,8 @@ if ($action && $leave_id) {
                 @unlink($path);
             }
         }
-
-        header("Location: manage_leave.php?msg=deleted");
+        $_SESSION['flash_msg'] = "ลบรายการเรียบร้อยแล้ว";
+        header("Location: manage_leave.php");
         exit();
     }
 }
@@ -177,7 +220,7 @@ if ($from_date && $to_date) {
     $params[] = $to_date;   $typesBind .= "s";
 }
 
-// เรียงลำดับ
+// เรียงลำดับ: รอดำเนินการ -> อนุมัติ -> อื่น ๆ + วันที่เริ่มล่าสุด
 $sql .= "
     ORDER BY
         CASE el.Leave_Status_ID WHEN '3' THEN 1 WHEN '1' THEN 2 ELSE 3 END,
@@ -203,11 +246,12 @@ function renderStatusBadge($id, $text) {
 }
 ?>
 <div class="main-content p-4">
+    <?php if (!empty($_SESSION['flash_msg'])): ?>
+      <div class="alert alert-info"><?= htmlspecialchars($_SESSION['flash_msg']); unset($_SESSION['flash_msg']); ?></div>
+    <?php endif; ?>
+
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h4 class="mb-0">จัดการการลา</h4>
-        <?php if (isset($_GET['msg']) && $_GET['msg'] === 'deleted'): ?>
-            <span class="text-success small"><i class="bi bi-check-circle"></i> ลบรายการเรียบร้อยแล้ว</span>
-        <?php endif; ?>
     </div>
 
     <!-- ฟอร์มค้นหา/กรอง -->
@@ -218,10 +262,10 @@ function renderStatusBadge($id, $text) {
                     <i class="bi bi-funnel"></i> ค้นหาและกรอง
                 </h5>
                 <div class="ms-auto">
-                    <button type="submit" class="btn btn-primary me-2">
+                    <button type="submit" form="filterForm" class="btn btn-primary me-2">
                         <i class="bi bi-search"></i> ค้นหา
                     </button>
-                    <a href="history.php" class="btn btn-secondary">
+                    <a href="manage_leave.php" class="btn btn-secondary">
                         <i class="bi bi-x-circle"></i> ล้างค่า
                     </a>
                 </div>
@@ -272,54 +316,115 @@ function renderStatusBadge($id, $text) {
         </div>
     </div>
 
-    <!-- ตารางรายการ -->
+    <!-- ตารางรายการ (มีเช็กบ็อกซ์) -->
     <div class="card">
         <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead class="table-light">
-                        <tr>
-                            <th>พนักงาน</th>
-                            <th>ประเภท</th>
-                            <th>วันที่เริ่มลา - วันที่สิ้นสุด</th>
-                            <th>เหตุผล</th>
-                            <th>สถานะ</th>
-                            <th class="text-center">ดำเนินการ</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php if ($result && $result->num_rows > 0): ?>
-                        <?php while($row = $result->fetch_assoc()): ?>
+            <form id="bulkForm" method="post" action="manage_leave.php">
+                <input type="hidden" name="bulk_action" value="delete">
+
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
                             <tr>
-                                <td><?= htmlspecialchars($row['Emp_Name']) ?></td>
-                                <td><?= htmlspecialchars($row['Leave_Type_Name']) ?></td>
-                                <td><?= htmlspecialchars($row['Start_leave_date']) ?> - <?= htmlspecialchars($row['End_Leave_date']) ?></td>
-                                <td><?= htmlspecialchars($row['Reason'] ?: '-') ?></td>
-                                <td><?= renderStatusBadge($row['Leave_Status_ID'], $row['status_name']) ?></td>
-                                <td class="text-center">
-                                    <?php if ($row['Leave_Status_ID'] == '3'): ?>
-                                        <a href="manage_leave.php?action=approve&id=<?= urlencode($row['Leave_ID']) ?>"
-                                           class="btn btn-success btn-sm">อนุมัติ</a>
-                                        <a href="manage_leave.php?action=reject&id=<?= urlencode($row['Leave_ID']) ?>"
-                                           class="btn btn-danger btn-sm">ปฏิเสธ</a>
-                                    <?php endif; ?>
-                                    <a href="manage_leave.php?action=delete&id=<?= urlencode($row['Leave_ID']) ?>"
-                                       class="btn btn-outline-danger btn-sm ms-1"
-                                       onclick="return confirm('ยืนยันการลบรายการลานี้? การลบจะถาวร');">
-                                       ลบ
-                                    </a>
-                                </td>
+                                <th style="width:36px;">
+                                    <input type="checkbox" id="check-all">
+                                </th>
+                                <th>พนักงาน</th>
+                                <th>ประเภท</th>
+                                <th>วันที่เริ่มลา - วันที่สิ้นสุด</th>
+                                <th>เหตุผล</th>
+                                <th>สถานะ</th>
+                                <th class="text-center">ดำเนินการ</th>
                             </tr>
-                        <?php endwhile; ?>
-                    <?php else: ?>
-                        <tr><td colspan="6" class="text-center text-muted">ไม่พบข้อมูลตามเงื่อนไข</td></tr>
-                    <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+                        </thead>
+                        <tbody>
+                        <?php if ($result && $result->num_rows > 0): ?>
+                            <?php while($row = $result->fetch_assoc()): ?>
+                                <tr data-leave-id="<?= htmlspecialchars($row['Leave_ID']) ?>">
+                                    <td>
+                                        <input type="checkbox" class="row-check" name="ids[]" value="<?= htmlspecialchars($row['Leave_ID']) ?>">
+                                    </td>
+                                    <td><?= htmlspecialchars($row['Emp_Name']) ?></td>
+                                    <td><?= htmlspecialchars($row['Leave_Type_Name']) ?></td>
+                                    <td><?= htmlspecialchars($row['Start_leave_date']) ?> - <?= htmlspecialchars($row['End_Leave_date']) ?></td>
+                                    <td><?= htmlspecialchars($row['Reason'] ?: '-') ?></td>
+                                    <td><?= renderStatusBadge($row['Leave_Status_ID'], $row['status_name']) ?></td>
+                                    <td class="text-center">
+                                        <?php if ($row['Leave_Status_ID'] == '3'): ?>
+                                            <a href="manage_leave.php?action=approve&id=<?= urlencode($row['Leave_ID']) ?>" class="btn btn-success btn-sm">อนุมัติ</a>
+                                            <a href="manage_leave.php?action=reject&id=<?= urlencode($row['Leave_ID']) ?>" class="btn btn-danger btn-sm">ปฏิเสธ</a>
+                                        <?php endif; ?>
+                                        <a href="manage_leave.php?action=delete&id=<?= urlencode($row['Leave_ID']) ?>"
+                                           class="btn btn-outline-danger btn-sm ms-1"
+                                           onclick="return confirm('ยืนยันการลบรายการลานี้? การลบจะถาวร');">
+                                           ลบ
+                                        </a>
+                                    </td>
+                                </tr>
+                            <?php endwhile; ?>
+                        <?php else: ?>
+                            <tr><td colspan="7" class="text-center text-muted">ไม่พบข้อมูลตามเงื่อนไข</td></tr>
+                        <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- ปุ่มลบที่เลือก (ล่าง) -->
+                <div class="d-flex justify-content-end mt-2">
+                    <button id="btn-bulk-delete" type="submit" class="btn btn-outline-danger btn-sm" disabled>
+                        <i class="bi bi-trash"></i> ลบที่เลือก
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
+
+<!-- JS: select all / enable buttons / confirm -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const checkAll = document.getElementById('check-all');
+  const rowChecks = document.querySelectorAll('.row-check');
+  const btns = [
+    document.getElementById('btn-bulk-delete'),
+    document.getElementById('btn-bulk-delete-top')
+  ].filter(Boolean);
+  const forms = [
+    document.getElementById('bulkForm'),
+    document.getElementById('bulkFormTop')
+  ].filter(Boolean);
+
+  function updateButtons() {
+    const anyChecked = Array.from(rowChecks).some(ch => ch.checked);
+    btns.forEach(b => b.disabled = !anyChecked);
+  }
+
+  if (checkAll) {
+    checkAll.addEventListener('change', () => {
+      rowChecks.forEach(ch => ch.checked = checkAll.checked);
+      updateButtons();
+    });
+  }
+  rowChecks.forEach(ch => ch.addEventListener('change', updateButtons));
+  updateButtons();
+
+  forms.forEach(f => {
+    f.addEventListener('submit', (e) => {
+      const anyChecked = Array.from(document.querySelectorAll('.row-check')).some(ch => ch.checked);
+      if (!anyChecked) {
+        e.preventDefault();
+        alert('กรุณาเลือกรายการที่จะลบก่อน');
+        return false;
+      }
+      if (!confirm('ยืนยันการลบรายการที่เลือกทั้งหมดหรือไม่?')) {
+        e.preventDefault();
+        return false;
+      }
+    });
+  });
+});
+</script>
+
 <?php
 require_once '../includes/footer.php';
 $stmt->close();

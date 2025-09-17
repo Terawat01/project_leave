@@ -100,6 +100,53 @@
         // Start WebSocket connection
         connectWebSocket();
     </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+        const checkAll = document.getElementById('check-all');
+        const rowChecks = document.querySelectorAll('.row-check');
+        const btns = [
+            document.getElementById('btn-bulk-delete'),
+            document.getElementById('btn-bulk-delete-top')
+        ].filter(Boolean);
+        const bulkForm = document.getElementById('bulkForm');
+        const bulkFormTop = document.getElementById('bulkFormTop');
+
+        function updateButtons() {
+            const anyChecked = Array.from(rowChecks).some(ch => ch.checked);
+            btns.forEach(b => b && (b.disabled = !anyChecked));
+        }
+
+        // เลือกทั้งหมด
+        if (checkAll) {
+            checkAll.addEventListener('change', () => {
+            rowChecks.forEach(ch => ch.checked = checkAll.checked);
+            updateButtons();
+            });
+        }
+
+        // เปลี่ยนสถานะช่องใด ๆ
+        rowChecks.forEach(ch => ch.addEventListener('change', updateButtons));
+        updateButtons();
+
+        // ยืนยันก่อนส่ง
+        [bulkForm, bulkFormTop].forEach(f => {
+            if (!f) return;
+            f.addEventListener('submit', (e) => {
+            const anyChecked = Array.from(document.querySelectorAll('.row-check')).some(ch => ch.checked);
+            if (!anyChecked) {
+                e.preventDefault();
+                alert('กรุณาเลือกรายการที่จะลบก่อน');
+                return false;
+            }
+            if (!confirm('ยืนยันการลบรายการที่เลือกทั้งหมดหรือไม่?')) {
+                e.preventDefault();
+                return false;
+            }
+            });
+        });
+        });
+        </script>
+
     <?php endif; ?>
     
 </body>
