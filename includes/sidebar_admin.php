@@ -49,6 +49,11 @@ try {
                 </a>
             </li>
             <li>
+                <a href="leave_history.php" class="nav-link <?php echo ($current_page == 'leave_history.php') ? 'active' : 'link-dark'; ?>">
+                    <i class="bi bi-clock-history me-2"></i>ประวัติการลาทั้งหมด
+                </a>
+            </li>
+            <li>
                 <a href="notifications.php" class="nav-link d-flex align-items-center <?php echo ($current_page == 'notifications.php') ? 'active' : 'link-dark'; ?>">
                     <i class="bi bi-bell me-2"></i>การแจ้งเตือน
                     <span id="notification-badge-side"

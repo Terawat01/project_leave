@@ -346,7 +346,9 @@ function renderStatusBadge($id, $text) {
                                     </td>
                                     <td><?= htmlspecialchars($row['Emp_Name']) ?></td>
                                     <td><?= htmlspecialchars($row['Leave_Type_Name']) ?></td>
-                                    <td><?= htmlspecialchars($row['Start_leave_date']) ?> - <?= htmlspecialchars($row['End_Leave_date']) ?></td>
+                                    <td>
+                                    <?= date('d/m/Y', strtotime($row['Start_leave_date'])) ?> - <?= date('d/m/Y', strtotime($row['End_Leave_date'])) ?>
+                                    </td>
                                     <td><?= htmlspecialchars($row['Reason'] ?: '-') ?></td>
                                     <td><?= renderStatusBadge($row['Leave_Status_ID'], $row['status_name']) ?></td>
                                     <td class="text-center">

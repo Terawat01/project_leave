@@ -81,6 +81,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>เข้าสู่ระบบ | Leave System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body {
@@ -128,7 +129,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     </div>
                     <div class="mb-3">
                         <label for="password" class="form-label">รหัสผ่าน</label>
-                        <input type="password" class="form-control" id="password" name="password" placeholder="••••••••" required>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="password" name="password" placeholder="••••••••" required>
+                            <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                <i class="bi bi-eye" id="toggleIcon"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="d-grid mt-3">
                         <button type="submit" class="btn btn-primary btn-lg">เข้าสู่ระบบ</button>
@@ -138,5 +144,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         </div>
     </div>
 </div>
+
+<script>
+document.getElementById("togglePassword").addEventListener("click", function() {
+    const pwdInput = document.getElementById("password");
+    const icon = document.getElementById("toggleIcon");
+    if (pwdInput.type === "password") {
+        pwdInput.type = "text";
+        icon.classList.remove("bi-eye");
+        icon.classList.add("bi-eye-slash");
+    } else {
+        pwdInput.type = "password";
+        icon.classList.remove("bi-eye-slash");
+        icon.classList.add("bi-eye");
+    }
+});
+</script>
 </body>
 </html>
